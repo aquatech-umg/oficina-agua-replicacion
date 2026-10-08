@@ -1,0 +1,131 @@
+openapi: 3.0.3
+
+info:
+  title: AquaTech - API de sincronización
+  version: 0.1.0
+  description: |
+    Borrador inicial del contrato OpenAPI correspondiente a AQ-104.
+    Inicia la replicación asíncrona de clientes y pagos hacia NoSQL
+    y permite consultar su progreso.
+    La sincronización aplica solo registros nuevos o modificados,
+    sin eliminar registros del destino ni modificar el monolito.
+
+servers:
+  - url: http://localhost:8085
+    description: Servicio de sincronización local
+
+tags:
+  - name: Sincronización
+    description: Creación y consulta de trabajos de sincronización
+
+paths:
+  /api/sync/resumen:
+    post:
+      tags:
+        - Sincronización
+      summary: Iniciar un trabajo de sincronización
+      operationId: crearJobSincronizacion
+      description: |
+        Acepta el trabajo y devuelve su identificador de inmediato.
+        El procesamiento continúa en segundo plano.
+        En este borrador, la petición no requiere cuerpo.
+      responses:
+        '202':
+          description: Trabajo aceptado para procesamiento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAceptado'
+              example:
+                jobId: "8fa4f026-8405-4ef0-9bd7-516ea686be0e"
+                estado: PENDIENTE
+
+  /api/sync/jobs/{jobId}:
+    get:
+      tags:
+        - Sincronización
+      summary: Consultar el estado y progreso de un trabajo
+      operationId: consultarJobSincronizacion
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          description: Identificador del trabajo de sincronización
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Estado actual del trabajo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoJob'
+              example:
+                jobId: "8fa4f026-8405-4ef0-9bd7-516ea686be0e"
+                estado: EN_PROGRESO
+                progreso: 45
+        '404':
+          description: No existe un trabajo con ese identificador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                mensaje: Trabajo de sincronización no encontrado
+
+components:
+  schemas:
+    EstadoSincronizacion:
+      type: string
+      enum:
+        - PENDIENTE
+        - EN_PROGRESO
+        - COMPLETADO
+        - FALLIDO
+
+    JobAceptado:
+      type: object
+      required:
+        - jobId
+        - estado
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        estado:
+          type: string
+          enum:
+            - PENDIENTE
+
+    EstadoJob:
+      type: object
+      required:
+        - jobId
+        - estado
+        - progreso
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        estado:
+          $ref: '#/components/schemas/EstadoSincronizacion'
+        progreso:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: |
+            Porcentaje de avance. PENDIENTE inicia en 0;
+            COMPLETADO alcanza 100. FALLIDO conserva el
+            porcentaje alcanzado antes del error.
+        mensaje:
+          type: string
+          description: Información adicional o motivo del fallo
+
+    Error:
+      type: object
+      required:
+        - mensaje
+      properties:
+        mensaje:
+          type: string
