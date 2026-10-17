@@ -1,123 +1,186 @@
-# AQ-99: Elección de base NoSQL y modelo de clientes y pagos
+# Modelo NoSQL de clientes y pagos — AQ-99 / AQ-122
 
 Responsable: Nayeli Melissa Urrutia Orellana.
+Repositorio: oficina-agua-replicacion.
 Servicio: sync-service.
 
-## 1. Elección de la base de datos
+## 1. Objetivo
 
-Se utilizará DynamoDB Local como destino de la réplica de clientes
-y pagos.
+Replicar clientes y pagos desde la réplica de MySQL hacia
+DynamoDB Local. Se insertan registros nuevos y se actualizan
+los modificados, sin eliminar registros del destino.
 
-Esta elección sigue la tecnología indicada para el módulo de
-replicación en la arquitectura de la Fase 2. MongoDB se considera
-una alternativa permitida, pero no se utilizará en este módulo.
+El esquema de origen se verificó en:
+oficina-agua-infra/db/01-esquema.sql.
 
-DynamoDB Local se ejecutará mediante Docker Compose y estará
-disponible desde la computadora en el puerto 8011.
+## 2. Tablas de destino
 
-El servicio Spring Boot de sincronización utilizará el puerto 8085.
+| Tabla | Clave de partición | Tipo |
+|-------|--------------------|------|
+| clientes | clienteId | String |
+| pagos | pagoId | String |
 
-## 2. Alcance
+No se utiliza clave de ordenación ni índices secundarios.
 
-El servicio copiará clientes y pagos desde la fuente MySQL
-de solo lectura indicada por la arquitectura hacia DynamoDB.
+DynamoDB Local está disponible en http://localhost:8011.
+Desde otros contenedores del mismo Compose se utiliza
+http://dynamodb-local:8000.
 
-La sincronización insertará registros nuevos y actualizará los
-registros modificados. No eliminará registros del destino ni
-modificará el monolito.
+## 3. Campos de clientes
 
-## 3. Organización de los datos
+| Origen MySQL | Destino DynamoDB | Tipo de destino |
+|--------------|-----------------|-----------------|
+| clientes.id | clienteId | String |
+| clientes.nombre | datos.nombre | String |
+| clientes.activo | datos.activo | Boolean |
 
-Se proponen dos tablas independientes:
+Se replican todos los clientes, incluidos los inactivos.
+El valor activo se convierte de 0/1 a false/true.
 
-| Tabla | Clave de partición | Tipo de clave | Contenido |
-|-------|--------------------|---------------|-----------|
-| clientes | clienteId | String | Información de cada cliente |
-| pagos | pagoId | String | Información de cada pago |
-
-Cada elemento conservará el identificador del registro de origen,
-convertido a texto.
-
-No se utilizará clave de ordenación en este modelo inicial.
-
-## 4. Documento de cliente
-
-Ejemplo ilustrativo del modelo de destino:
+Ejemplo:
 
 ```json
 {
   "clienteId": "123",
   "datos": {
-    "nombre": "Cliente de ejemplo"
+    "nombre": "Cliente de ejemplo",
+    "activo": true
   }
 }
 ```
 
-- clienteId: identificador único y estable del cliente en el origen.
-- datos: mapa con los atributos del cliente que se replicarán.
+### Campos excluidos
 
-Los atributos concretos de datos se definirán al revisar el esquema
-real de MySQL. El ejemplo no establece los nombres de las columnas
-del sistema original.
+No se replican dpi, nit, telefono ni direccion_principal,
+porque no son necesarios para identificar al cliente y
+relacionarlo con sus pagos en este alcance.
 
-## 5. Documento de pago
+Tampoco se copian created_at ni updated_at. La detección de
+cambios compara los campos incluidos en el modelo.
 
-Ejemplo ilustrativo del modelo de destino:
+## 4. Campos de pagos
+
+| Origen MySQL | Destino DynamoDB | Tipo de destino |
+|--------------|-----------------|-----------------|
+| pagos.id | pagoId | String |
+| contadores.cliente_id, mediante las relaciones | clienteId | String |
+| pagos.recibo_id | datos.reciboId | String |
+| pagos.metodo_pago_id | datos.metodoPagoId | String |
+| pagos.monto | datos.monto | String decimal |
+| pagos.fecha_pago | datos.fechaPago | String |
+
+Ejemplo:
 
 ```json
 {
   "pagoId": "456",
   "clienteId": "123",
   "datos": {
+    "reciboId": "789",
+    "metodoPagoId": "1",
     "monto": "150.00",
-    "fechaPago": "2026-10-09"
+    "fechaPago": "2026-10-09T14:30:00"
   }
 }
 ```
 
-- pagoId: identificador único y estable del pago en el origen.
-- clienteId: identificador del cliente al que corresponde el pago.
-- datos: mapa con los atributos del pago que se replicarán.
+No se replican usuario_registro_id, referencia, observacion,
+created_at ni updated_at. Se conserva la información necesaria
+para identificar el pago, su cliente, recibo, método, monto
+y fecha, evitando copiar textos libres y datos del operador.
 
-Los atributos concretos y la forma de obtener clienteId se
-confirmarán al revisar las tablas y relaciones reales de MySQL.
+## 5. Relación entre pagos y clientes
 
-En este modelo los importes se conservarán como texto decimal,
-sin convertirlos a números de punto flotante.
+La tabla pagos no tiene una columna cliente_id.
 
-## 6. Relación entre clientes y pagos
+La relación real es:
 
-Un cliente puede tener varios pagos.
+pagos → recibos → lecturas → contadores → clientes.
 
-Cada pago conservará el clienteId del cliente correspondiente.
-Los pagos se guardarán como elementos independientes para poder
-actualizarlos sin reemplazar todos los pagos de un cliente.
+Consulta para obtener la asociación:
 
-DynamoDB no impondrá una clave foránea. El servicio será responsable
-de conservar correctamente esta asociación.
+```sql
+SELECT
+    p.id AS pago_id,
+    c.id AS cliente_id,
+    p.recibo_id,
+    p.metodo_pago_id,
+    p.monto,
+    p.fecha_pago
+FROM pagos p
+JOIN recibos r ON r.id = p.recibo_id
+JOIN lecturas l ON l.id = r.lectura_id
+JOIN contadores co ON co.id = l.contador_id
+JOIN clientes c ON c.id = co.cliente_id;
+```
 
-## 7. Reglas de actualización
+Esta consulta documenta la relación. La lectura paginada y
+la detección de registros inválidos se implementarán en AQ-123.
+Un pago sin una relación válida con un cliente debe reportarse
+como error y no omitirse silenciosamente.
 
-- Si el identificador no existe en el destino, insertar el elemento.
-- Si existe y sus datos cambiaron, actualizar el elemento.
-- Si existe y sus datos son iguales, conservarlo sin cambios.
-- Si deja de aparecer en el origen, conservarlo en el destino.
-- Repetir una sincronización no debe crear registros duplicados.
+DynamoDB no impone claves foráneas. El servicio de
+sincronización debe validar la asociación.
 
-Los identificadores estables permiten insertar o actualizar el mismo
-elemento durante diferentes ejecuciones.
+## 6. Reglas de conversión
 
-La estrategia concreta para detectar diferencias se documentará
-en AQ-101.
+- Los identificadores se convierten a texto decimal.
+- monto se obtiene como decimal exacto y se representa con
+  dos decimales, por ejemplo "150.00"; no se utiliza double.
+- fecha_pago se representa como yyyy-MM-dd'T'HH:mm:ss.
+- fecha_pago es DATETIME en el origen y no contiene zona
+  horaria; no se añade Z ni se supone una conversión a UTC.
+- Todos los campos seleccionados son obligatorios según el
+  esquema; un valor nulo inesperado se reporta como error.
+- No se convierten valores nulos en la cadena "null".
+- Los registros inválidos no se escriben en DynamoDB.
 
-## 8. Validación pendiente para la implementación
+## 7. Reglas de sincronización
 
-Antes de programar la copia real se verificará:
+- Insertar cuando la clave no exista en el destino.
+- Actualizar únicamente cuando cambien los campos replicados.
+- No escribir si los datos son iguales.
+- Conservar los atributos exclusivos del destino.
+- No borrar registros aunque desaparezcan del origen.
+- Repetir una ejecución no debe duplicar registros.
 
-- Las claves primarias de clientes y pagos en MySQL.
-- Los campos que se incluirán en cada mapa datos.
-- La relación real que permite asociar un pago con su cliente.
-- La representación de valores nulos, fechas e importes.
+La estrategia se detalla en estrategia-diff-upsert.md.
+La sincronización real se implementará en AQ-124.
 
-Este documento define la elección de base NoSQL y el modelo
-propuesto. No implementa todavía la sincronización.
+## 8. Creación automática de tablas
+
+El servicio dynamodb-replicacion-init del docker-compose.yml:
+
+1. Espera a que DynamoDB Local responda.
+2. Crea clientes con clave clienteId de tipo String si no existe.
+3. Crea pagos con clave pagoId de tipo String si no existe.
+4. Espera a que ambas tablas estén disponibles.
+5. Finaliza con código 0 cuando termina correctamente.
+
+Las credenciales local/local son valores ficticios para
+DynamoDB Local, no credenciales de una cuenta AWS.
+
+Para levantar los servicios:
+
+```powershell
+docker compose up -d
+```
+
+Para revisar el resultado:
+
+```powershell
+docker compose logs dynamodb-replicacion-init
+docker compose ps -a
+```
+
+DynamoDB guarda los datos en el volumen dynamodb-data.
+
+## 9. Validación realizada
+
+- Inicializador terminado con Exited (0).
+- Tabla clientes en ACTIVE, clave clienteId de tipo S.
+- Tabla pagos en ACTIVE, clave pagoId de tipo S.
+
+AQ-122 prepara las tablas y define el modelo real.
+La lectura de MySQL y la copia de registros corresponden
+a AQ-123 y AQ-124.
