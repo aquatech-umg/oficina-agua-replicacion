@@ -4,7 +4,7 @@ info:
   title: AquaTech - API de sincronización
   version: 0.1.0
   description: |
-    Borrador inicial del contrato OpenAPI correspondiente a AQ-104.
+    Contrato OpenAPI de sincronización, actualizado en AQ-124.
     Inicia la replicación asíncrona de clientes y pagos hacia NoSQL
     y permite consultar su progreso.
     La sincronización aplica solo registros nuevos o modificados,
@@ -28,7 +28,7 @@ paths:
       description: |
         Acepta el trabajo y devuelve su identificador de inmediato.
         El procesamiento continúa en segundo plano.
-        En este borrador, la petición no requiere cuerpo.
+        La petición no requiere cuerpo. Se permite un solo trabajo activo.
       responses:
         '202':
           description: Trabajo aceptado para procesamiento
@@ -39,6 +39,8 @@ paths:
               example:
                 jobId: "8fa4f026-8405-4ef0-9bd7-516ea686be0e"
                 estado: PENDIENTE
+        '409':
+          description: Ya existe una sincronización pendiente o en progreso
 
   /api/sync/jobs/{jobId}:
     get:
