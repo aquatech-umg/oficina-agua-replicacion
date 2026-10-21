@@ -169,3 +169,63 @@ El recorrido no utiliza un snapshot del origen. Si el número
 de registros procesados difiere del total inicial, el job falla
 y requiere una nueva ejecución. Los cambios de valores durante
 el recorrido se vuelven a comparar en una ejecución posterior.
+
+## AQ-130: validacion masiva de sincronizacion - Sprint 9
+
+Fecha: 20 de octubre de 2026.
+
+### Datos de prueba
+
+- 500 clientes.
+- 600 contadores.
+- 39,600 recibos en MariaDB.
+- 37,079 pagos y 500 clientes procesados por sync-service.
+- Origen: MariaDB replica de solo lectura.
+- Destino: DynamoDB Local.
+
+### Pruebas realizadas
+
+1. Sincronizacion sin cambios:
+   - Estado: COMPLETADO.
+   - Progreso: 100 %.
+   - Procesados: 37,579.
+   - Escrituras confirmadas: 0.
+
+2. Actualizacion del cliente ID 1:
+   - Nombre original: Maria Lopez Cux.
+   - Nombre de prueba: Maria Lopez Cux PRUEBA AQ130.
+   - Procesados: 37,579.
+   - Escrituras confirmadas: 1.
+   - Cambio verificado directamente en DynamoDB.
+
+3. Restauracion del cliente:
+   - Nombre restaurado: Maria Lopez Cux.
+   - Procesados: 37,579.
+   - Escrituras confirmadas: 1.
+   - Restauracion confirmada en DynamoDB.
+
+4. Conservacion de atributos:
+   - El campo notaInterna con valor Conservar AQ124
+     permanecio intacto durante las actualizaciones.
+
+5. Prueba cronometrada sin cambios:
+   - Estado: COMPLETADO.
+   - Progreso: 100 %.
+   - Registros procesados: 37,579.
+   - Escrituras confirmadas: 0.
+   - Tiempo observado: 46.26 segundos.
+   - Incluye el tiempo de consulta periodica cada 2 segundos.
+
+### Limitaciones
+
+- DynamoDB ya contenia datos de pruebas anteriores.
+- No se midio una carga inicial con tablas vacias.
+- No se eliminaron datos ni se recrearon volumenes.
+- Los jobs se almacenan en memoria del microservicio.
+
+### Conclusion
+
+Se valido el procesamiento masivo, la deteccion de
+diferencias, la actualizacion de registros, la ausencia
+de escrituras innecesarias y la conservacion de
+atributos exclusivos de DynamoDB.
