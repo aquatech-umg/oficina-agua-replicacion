@@ -1,0 +1,8 @@
+# Variables locales con claves: nunca se suben (el repo es público)
+.env
+*.env
+!.env.example
+
+# IntelliJ IDEA
+.idea/
+*.iml
