@@ -12,12 +12,18 @@ Los trabajos se guardan en memoria y se pierden al reiniciar.
 
 ## Cómo ejecutar
 
-Desde la raíz del repositorio:
+1. Copiar `.env.example` (raíz del repositorio) a `.env` y poner la
+   clave de lectura en `DB_REPLICA_PASSWORD`. El `.env` no se sube a Git.
+2. Desde la raíz del repositorio:
 
 ```powershell
 cd .\sync-service
-mvn spring-boot:run
+.\mvnw.cmd spring-boot:run
 ```
+
+El servicio lee el `.env` al arrancar (AQ-146, `spring.config.import`):
+primero `sync-service/.env` y luego el `.env` de la raíz. No hace falta
+definir variables en la terminal; si se definen, tienen prioridad.
 
 Puerto del servicio: 8085.
 Para detenerlo: Ctrl + C.
@@ -41,7 +47,7 @@ El estado FALLIDO está definido para futuras ejecuciones con errores.
 ## Documentación
 
 - Contrato: openapi/openapi.yaml
-- Modelo NoSQL: docs/modelo-nosql.md# Sync Service — AQ-100
+- Modelo NoSQL: docs/modelo-nosql.md
 
 ## AQ-123: lectura paginada de la réplica
 
@@ -60,7 +66,10 @@ utilizando el usuario de solo lectura.
 | SYNC_PAGE_SIZE | 500, admite valores entre 1 y 1000 |
 
 Las contraseñas no se guardan en el repositorio.
-Las variables deben estar definidas en la terminal que ejecuta Maven.
+Las variables se leen del `.env` local (copiado de `.env.example`)
+o de la terminal que ejecuta Maven, que tiene prioridad.
+No dejar vacía una variable con valor predeterminado:
+un valor vacío le gana al predeterminado.
 
 ### Funcionamiento
 
@@ -82,7 +91,8 @@ Las variables deben estar definidas en la terminal que ejecuta Maven.
 ### Validación
 
 Con la infraestructura activa, los datos de prueba cargados
-y DB_REPLICA_PASSWORD definida, ejecutar desde sync-service:
+y DB_REPLICA_PASSWORD definida (en el `.env` o en la terminal),
+ejecutar desde sync-service:
 
     .\mvnw.cmd test
 
@@ -148,7 +158,7 @@ El nombre del cliente de prueba se restauró a su valor original.
 ### Ejecución
 
 Con MySQL, su réplica y DynamoDB Local activos, y la contraseña
-DB_REPLICA_PASSWORD definida en la terminal:
+DB_REPLICA_PASSWORD definida en el `.env` o en la terminal:
 
     .\mvnw.cmd spring-boot:run
 
@@ -186,35 +196,35 @@ Fecha: 20 de octubre de 2026.
 ### Pruebas realizadas
 
 1. Sincronizacion sin cambios:
-   - Estado: COMPLETADO.
-   - Progreso: 100 %.
-   - Procesados: 37,579.
-   - Escrituras confirmadas: 0.
+    - Estado: COMPLETADO.
+    - Progreso: 100 %.
+    - Procesados: 37,579.
+    - Escrituras confirmadas: 0.
 
 2. Actualizacion del cliente ID 1:
-   - Nombre original: Maria Lopez Cux.
-   - Nombre de prueba: Maria Lopez Cux PRUEBA AQ130.
-   - Procesados: 37,579.
-   - Escrituras confirmadas: 1.
-   - Cambio verificado directamente en DynamoDB.
+    - Nombre original: Maria Lopez Cux.
+    - Nombre de prueba: Maria Lopez Cux PRUEBA AQ130.
+    - Procesados: 37,579.
+    - Escrituras confirmadas: 1.
+    - Cambio verificado directamente en DynamoDB.
 
 3. Restauracion del cliente:
-   - Nombre restaurado: Maria Lopez Cux.
-   - Procesados: 37,579.
-   - Escrituras confirmadas: 1.
-   - Restauracion confirmada en DynamoDB.
+    - Nombre restaurado: Maria Lopez Cux.
+    - Procesados: 37,579.
+    - Escrituras confirmadas: 1.
+    - Restauracion confirmada en DynamoDB.
 
 4. Conservacion de atributos:
-   - El campo notaInterna con valor Conservar AQ124
-     permanecio intacto durante las actualizaciones.
+    - El campo notaInterna con valor Conservar AQ124
+      permanecio intacto durante las actualizaciones.
 
 5. Prueba cronometrada sin cambios:
-   - Estado: COMPLETADO.
-   - Progreso: 100 %.
-   - Registros procesados: 37,579.
-   - Escrituras confirmadas: 0.
-   - Tiempo observado: 46.26 segundos.
-   - Incluye el tiempo de consulta periodica cada 2 segundos.
+    - Estado: COMPLETADO.
+    - Progreso: 100 %.
+    - Registros procesados: 37,579.
+    - Escrituras confirmadas: 0.
+    - Tiempo observado: 46.26 segundos.
+    - Incluye el tiempo de consulta periodica cada 2 segundos.
 
 ### Limitaciones
 
