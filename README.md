@@ -304,3 +304,9 @@ Los trabajos y el control de concurrencia se almacenan en memoria, por lo que se
 La comparación con DynamoDB se realiza registro por registro. Además, la lectura de la réplica no utiliza una instantánea transaccional del conjunto completo de datos.
 
 Para más detalles técnicos, consultar [sync-service/README.md](sync-service/README.md).
+
+### Cómo se elaboró esta documentación
+
+La arquitectura y la presente documentación se redactaron con apoyo de **ChatGPT (OpenAI)**, una herramienta de inteligencia artificial utilizada para analizar la estructura del proyecto, revisar el código fuente y comprender la configuración de los repositorios.
+
+La herramienta se utilizó como apoyo para organizar y explicar los componentes, tecnologías y procesos del sistema AquaTech GT. Posteriormente, la información generada se contrastó con el código fuente para verificar su coherencia con la implementación del proyecto.
